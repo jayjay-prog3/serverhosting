@@ -6,14 +6,7 @@ const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
-
-// test route
-app.get("/", (req, res) => {
-  res.send("Server is live!");
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 // --- Messages storage ---
 const MESSAGES_FILE = path.join(__dirname, "messages.json");
@@ -28,50 +21,52 @@ if (fs.existsSync(MESSAGES_FILE)) {
   }
 }
 
-// socket logic
+// --- Voice channel users ---
+let voiceUsers = []; // { username, color }
+
+app.get("/", (req, res) => {
+  res.send("Server is live!");
+});
+
 io.on("connection", (socket) => {
   console.log("a user connected");
 
-  // send previous messages to this user
+  // send previous chat messages
   socket.emit("previous messages", chatHistory);
 
-  // --- Chat messages ---
+  // send current voice users
+  socket.emit("current-voice-users", voiceUsers);
+
+  // chat message handling
   socket.on("chat message", (msg) => {
     chatHistory.push(msg);
-
-    // save to file
     try {
       fs.writeFileSync(MESSAGES_FILE, JSON.stringify(chatHistory, null, 2));
     } catch (err) {
       console.error("Error writing messages.json:", err);
     }
-
-    // broadcast new message
     io.emit("chat message", msg);
   });
 
-  // --- Voice signaling ---
-  socket.on("join-voice", (data) => {
-    // notify all other users about this new peer
-    socket.broadcast.emit("user-joined-voice", { id: socket.id, user: data.user });
+  // --- Voice channel events ---
+  socket.on("join-voice", (user) => {
+    if (!voiceUsers.find(u => u.username === user.username)) {
+      voiceUsers.push(user);
+      io.emit("user-joined-voice", user);
+    }
   });
 
-  socket.on("offer", (data) => {
-    io.to(data.to).emit("offer", { from: socket.id, offer: data.offer });
-  });
-
-  socket.on("answer", (data) => {
-    io.to(data.to).emit("answer", { from: socket.id, answer: data.answer });
-  });
-
-  socket.on("ice-candidate", (data) => {
-    io.to(data.to).emit("ice-candidate", { from: socket.id, candidate: data.candidate });
+  socket.on("leave-voice", (username) => {
+    voiceUsers = voiceUsers.filter(u => u.username !== username);
+    io.emit("user-left-voice", username);
   });
 
   socket.on("disconnect", () => {
     console.log("user disconnected");
-    // notify everyone so peers can remove this connection
-    socket.broadcast.emit("user-left-voice", { id: socket.id });
+    // Remove from voice users if in channel
+    const leavingUsers = voiceUsers.filter(u => u.socketId === socket.id);
+    leavingUsers.forEach(u => io.emit("user-left-voice", u.username));
+    voiceUsers = voiceUsers.filter(u => u.socketId !== socket.id);
   });
 });
 
