@@ -6,7 +6,9 @@ const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
 // --- Messages storage ---
 const MESSAGES_FILE = path.join(__dirname, "messages.json");
@@ -21,9 +23,10 @@ if (fs.existsSync(MESSAGES_FILE)) {
   }
 }
 
-// --- Voice channel users ---
-let voiceUsers = []; // { username, color }
+// --- Voice Channel Users ---
+let vcUsers = [];
 
+// test route
 app.get("/", (req, res) => {
   res.send("Server is live!");
 });
@@ -31,13 +34,10 @@ app.get("/", (req, res) => {
 io.on("connection", (socket) => {
   console.log("a user connected");
 
-  // send previous chat messages
+  // Send previous messages to the user
   socket.emit("previous messages", chatHistory);
 
-  // send current voice users
-  socket.emit("current-voice-users", voiceUsers);
-
-  // chat message handling
+  // CHAT MESSAGE
   socket.on("chat message", (msg) => {
     chatHistory.push(msg);
     try {
@@ -48,25 +48,25 @@ io.on("connection", (socket) => {
     io.emit("chat message", msg);
   });
 
-  // --- Voice channel events ---
-  socket.on("join-voice", (user) => {
-    if (!voiceUsers.find(u => u.username === user.username)) {
-      voiceUsers.push(user);
-      io.emit("user-joined-voice", user);
+  // JOIN VC
+  socket.on("join-vc", (user) => {
+    if(!vcUsers.find(u=>u.socketId===user.socketId)){
+      vcUsers.push(user);
     }
+    io.emit("vc-update", vcUsers);
   });
 
-  socket.on("leave-voice", (username) => {
-    voiceUsers = voiceUsers.filter(u => u.username !== username);
-    io.emit("user-left-voice", username);
+  // LEAVE VC
+  socket.on("leave-vc", (user) => {
+    vcUsers = vcUsers.filter(u => u.socketId !== user.socketId);
+    io.emit("vc-update", vcUsers);
   });
 
   socket.on("disconnect", () => {
     console.log("user disconnected");
-    // Remove from voice users if in channel
-    const leavingUsers = voiceUsers.filter(u => u.socketId === socket.id);
-    leavingUsers.forEach(u => io.emit("user-left-voice", u.username));
-    voiceUsers = voiceUsers.filter(u => u.socketId !== socket.id);
+    // remove from VC if in VC
+    vcUsers = vcUsers.filter(u => u.socketId !== socket.id);
+    io.emit("vc-update", vcUsers);
   });
 });
 
