@@ -24,19 +24,20 @@ if (fs.existsSync(MESSAGES_FILE)) {
 }
 
 // --- Voice channel users ---
-let vcUsers = []; // { socketId, username, color }
+const vcUsers = {};
 
-// test route
 app.get("/", (req, res) => {
   res.send("Server is live!");
 });
 
-// socket logic
 io.on("connection", (socket) => {
-  console.log("a user connected");
+  console.log("A user connected");
 
-  // send previous messages to this user
+  // Send previous chat messages
   socket.emit("previous messages", chatHistory);
+
+  // Send current VC users
+  socket.emit("current vc users", vcUsers);
 
   // Chat messages
   socket.on("chat message", (msg) => {
@@ -49,38 +50,31 @@ io.on("connection", (socket) => {
     io.emit("chat message", msg);
   });
 
-  // --- Voice channel logic ---
-  socket.on("join-vc", ({ socketId, username, color }) => {
-    if(!vcUsers.find(u=>u.socketId===socketId)){
-      vcUsers.push({ socketId, username, color });
-    }
-    io.emit("vc-update", vcUsers);
+  // Voice channel join
+  socket.on("vc join", (data) => {
+    vcUsers[data.user] = { color: data.color, image: data.image };
+    io.emit("vc join", data); // notify everyone
   });
 
-  socket.on("leave-vc", ({ socketId }) => {
-    vcUsers = vcUsers.filter(u=>u.socketId!==socketId);
-    io.emit("vc-update", vcUsers);
-  });
-
-  // --- WebRTC signaling ---
-  socket.on("webrtc-offer", ({ to, offer }) => {
-    io.to(to).emit("webrtc-offer", { from: socket.id, offer });
-  });
-  socket.on("webrtc-answer", ({ to, answer }) => {
-    io.to(to).emit("webrtc-answer", { from: socket.id, answer });
-  });
-  socket.on("webrtc-candidate", ({ to, candidate }) => {
-    io.to(to).emit("webrtc-candidate", { from: socket.id, candidate });
+  // Voice channel leave
+  socket.on("vc leave", (data) => {
+    delete vcUsers[data.user];
+    io.emit("vc leave", data);
   });
 
   socket.on("disconnect", () => {
-    console.log("user disconnected");
-    vcUsers = vcUsers.filter(u=>u.socketId!==socket.id);
-    io.emit("vc-update", vcUsers);
+    console.log("User disconnected");
+    // Remove from VC if present
+    for (let user in vcUsers) {
+      if (vcUsers.hasOwnProperty(user) && user === socket.id) {
+        delete vcUsers[user];
+        io.emit("vc leave", { user });
+      }
+    }
   });
 });
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-  console.log(`listening on ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
