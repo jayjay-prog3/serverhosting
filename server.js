@@ -35,6 +35,7 @@ io.on("connection", (socket) => {
   // send previous messages to this user
   socket.emit("previous messages", chatHistory);
 
+  // --- Chat messages ---
   socket.on("chat message", (msg) => {
     chatHistory.push(msg);
 
@@ -49,8 +50,28 @@ io.on("connection", (socket) => {
     io.emit("chat message", msg);
   });
 
+  // --- Voice signaling ---
+  socket.on("join-voice", (data) => {
+    // notify all other users about this new peer
+    socket.broadcast.emit("user-joined-voice", { id: socket.id, user: data.user });
+  });
+
+  socket.on("offer", (data) => {
+    io.to(data.to).emit("offer", { from: socket.id, offer: data.offer });
+  });
+
+  socket.on("answer", (data) => {
+    io.to(data.to).emit("answer", { from: socket.id, answer: data.answer });
+  });
+
+  socket.on("ice-candidate", (data) => {
+    io.to(data.to).emit("ice-candidate", { from: socket.id, candidate: data.candidate });
+  });
+
   socket.on("disconnect", () => {
     console.log("user disconnected");
+    // notify everyone so peers can remove this connection
+    socket.broadcast.emit("user-left-voice", { id: socket.id });
   });
 });
 
