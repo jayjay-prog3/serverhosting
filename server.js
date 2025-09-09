@@ -23,21 +23,22 @@ if (fs.existsSync(MESSAGES_FILE)) {
   }
 }
 
-// --- Voice Channel Users ---
-let vcUsers = [];
+// --- Voice channel users ---
+let vcUsers = []; // { socketId, username, color }
 
 // test route
 app.get("/", (req, res) => {
   res.send("Server is live!");
 });
 
+// socket logic
 io.on("connection", (socket) => {
   console.log("a user connected");
 
-  // Send previous messages to the user
+  // send previous messages to this user
   socket.emit("previous messages", chatHistory);
 
-  // CHAT MESSAGE
+  // Chat messages
   socket.on("chat message", (msg) => {
     chatHistory.push(msg);
     try {
@@ -48,24 +49,33 @@ io.on("connection", (socket) => {
     io.emit("chat message", msg);
   });
 
-  // JOIN VC
-  socket.on("join-vc", (user) => {
-    if(!vcUsers.find(u=>u.socketId===user.socketId)){
-      vcUsers.push(user);
+  // --- Voice channel logic ---
+  socket.on("join-vc", ({ socketId, username, color }) => {
+    if(!vcUsers.find(u=>u.socketId===socketId)){
+      vcUsers.push({ socketId, username, color });
     }
     io.emit("vc-update", vcUsers);
   });
 
-  // LEAVE VC
-  socket.on("leave-vc", (user) => {
-    vcUsers = vcUsers.filter(u => u.socketId !== user.socketId);
+  socket.on("leave-vc", ({ socketId }) => {
+    vcUsers = vcUsers.filter(u=>u.socketId!==socketId);
     io.emit("vc-update", vcUsers);
+  });
+
+  // --- WebRTC signaling ---
+  socket.on("webrtc-offer", ({ to, offer }) => {
+    io.to(to).emit("webrtc-offer", { from: socket.id, offer });
+  });
+  socket.on("webrtc-answer", ({ to, answer }) => {
+    io.to(to).emit("webrtc-answer", { from: socket.id, answer });
+  });
+  socket.on("webrtc-candidate", ({ to, candidate }) => {
+    io.to(to).emit("webrtc-candidate", { from: socket.id, candidate });
   });
 
   socket.on("disconnect", () => {
     console.log("user disconnected");
-    // remove from VC if in VC
-    vcUsers = vcUsers.filter(u => u.socketId !== socket.id);
+    vcUsers = vcUsers.filter(u=>u.socketId!==socket.id);
     io.emit("vc-update", vcUsers);
   });
 });
