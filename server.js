@@ -9,13 +9,13 @@ const io = new Server(server, {
 });
 
 let messages = [];
-const MAX_MESSAGES = 100;
+const MAX_MESSAGES = 200;
 
-// track spam
+// Spam tracking
 const spamTracker = {};
-const SPAM_LIMIT = 4;      // number of messages allowed
+const SPAM_LIMIT = 4;      // messages allowed in window
 const SPAM_WINDOW = 4000;  // ms window
-const MUTE_TIME = 10;      // seconds muted
+const MUTE_TIME = 30;      // seconds muted
 
 io.on("connection", (socket) => {
   console.log("a user connected:", socket.id);
@@ -25,8 +25,8 @@ io.on("connection", (socket) => {
 
   // --- handle new message ---
   socket.on("chat message", (msg) => {
-    // spam check
     const now = Date.now();
+
     if (!spamTracker[socket.id]) spamTracker[socket.id] = [];
     spamTracker[socket.id] = spamTracker[socket.id].filter(t => now - t < SPAM_WINDOW);
     spamTracker[socket.id].push(now);
@@ -43,13 +43,13 @@ io.on("connection", (socket) => {
     io.emit("chat message", msg);
   });
 
-  // --- typing ---
-  socket.on("typing", (data) => {
-    socket.broadcast.emit("typing", data);
+  // --- typing indicators ---
+  socket.on("typing", (profile) => {
+    socket.broadcast.emit("typing", { id: socket.id, profile });
   });
 
-  socket.on("stop typing", (data) => {
-    socket.broadcast.emit("stop typing", data);
+  socket.on("stop typing", () => {
+    socket.broadcast.emit("stop typing", { id: socket.id });
   });
 
   // --- reactions ---
@@ -61,11 +61,11 @@ io.on("connection", (socket) => {
 
     let users = msg.reactions[data.emoji];
     if (users.includes(socket.id)) {
-      // toggle off
       msg.reactions[data.emoji] = users.filter(u => u !== socket.id);
     } else {
       users.push(socket.id);
     }
+
     io.emit("reaction", { id: data.id, emoji: data.emoji, userId: socket.id });
   });
 
@@ -92,6 +92,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("user disconnected:", socket.id);
     delete spamTracker[socket.id];
+    socket.broadcast.emit("stop typing", { id: socket.id });
   });
 });
 
