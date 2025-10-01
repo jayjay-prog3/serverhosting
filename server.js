@@ -96,6 +96,14 @@ io.on("connection", (socket) => {
   });
 });
 
+// --- Heartbeat to prevent Render from idling ---
+function sendHeartbeat() {
+  io.emit("heartbeat"); // minimal message, invisible to client
+  const nextInterval = 10000 + Math.random() * 20000; // 10–30 seconds
+  setTimeout(sendHeartbeat, nextInterval);
+}
+sendHeartbeat();
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
